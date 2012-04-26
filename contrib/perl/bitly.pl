@@ -1,32 +1,33 @@
 use Ekg2;
 use LWP::UserAgent;
 use URI::Escape;
+use utf8;
 use strict;
 use vars qw($VERSION %EKG2);
 
-our $VERSION = "1.10";
+our $VERSION = "1.12";
 our %EKG2    = (
     authors     => 'Jakub Łaszczyński',
     contact     => 'jakub.laszczynski@gmail.com',
     name        => 'bitly for ekg2',
     description => 'shortens urls for incoming messages',
     license     => 'GNU GPL',
-    changed     => '2012-02-24'
+    changed     => '2012-04-23'
 );
 
-Ekg2::variable_add( 'bitly_login',   '' );
-Ekg2::variable_add( 'bitly_apikey',  '' );
-Ekg2::variable_add( 'bitly_timeout', '5' );
-Ekg2::variable_add( 'bitly_length',  '30' );
-Ekg2::variable_add( 'bitly_pagesizelimit',  '102400' );
-Ekg2::variable_add( 'bitly_debug',  '0' );
+Ekg2::variable_add( 'bitly_login',         '' );
+Ekg2::variable_add( 'bitly_apikey',        '' );
+Ekg2::variable_add( 'bitly_timeout',       '5' );
+Ekg2::variable_add( 'bitly_length',        '30' );
+Ekg2::variable_add( 'bitly_pagesizelimit', '102400' );
+Ekg2::variable_add( 'bitly_debug',         '0' );
 
-my $bitly_login  = Ekg2::variable_find('bitly_login')->{value};
-my $bitly_apikey = Ekg2::variable_find('bitly_apikey')->{value};
-my $length       = Ekg2::variable_find('bitly_length')->{value};
-my $timeout      = Ekg2::variable_find('bitly_timeout')->{value};
-my $pagesizelimit= Ekg2::variable_find('bitly_pagesizelimit')->{value};
-my $debug        = Ekg2::variable_find('bitly_debug')->{value};
+my $bitly_login   = Ekg2::variable_find('bitly_login')->{value};
+my $bitly_apikey  = Ekg2::variable_find('bitly_apikey')->{value};
+my $length        = Ekg2::variable_find('bitly_length')->{value};
+my $timeout       = Ekg2::variable_find('bitly_timeout')->{value};
+my $pagesizelimit = Ekg2::variable_find('bitly_pagesizelimit')->{value};
+my $debug         = Ekg2::variable_find('bitly_debug')->{value};
 
 Ekg2::handler_bind( 'protocol-message-received', 'shortenline' );
 Ekg2::handler_bind( 'variable-changed',          'variable_changed' );
@@ -41,9 +42,7 @@ sub bitly() {
     my $url    = shift;
     my $window = shift;
 
-    $url = uri_escape($url);
-
-    my $api_src  = 'https://api-ssl.bit.ly/v3/shorten?login=' . $bitly_login . '&apiKey=' . $bitly_apikey . '&format=txt&longUrl=' . $url;
+    my $api_src  = 'https://api-ssl.bit.ly/v3/shorten?login=' . $bitly_login . '&apiKey=' . $bitly_apikey . '&format=txt&longUrl=' . uri_escape($url);
     my $response = $lwp->get($api_src);
 
     Ekg2::debug("BITLY API->$api_src\n") if ($debug);
@@ -52,13 +51,15 @@ sub bitly() {
         my $url_bitly = $response->decoded_content;
         $url_bitly =~ s/\n//g;
         Ekg2::debug("BITLY SHORTENED->$url_bitly\n") if ($debug);
-        my $get_title    = $lwp->get($url_bitly);
+        my $get_title = $lwp->get($url);
+        Ekg2::debug("BITLY GETTING TITLE\n") if ($debug);
         if ( $get_title->is_success ) {
             $get_title = $get_title->decoded_content;
-            $get_title =~ s/(\s+|\n)/ /g;
-            $get_title =~ /<title>(.*)<\/title>/;
-            Ekg2::Window::print( $window, "Page title: $1" ) if $1;
+            $get_title =~ /<title>(.+)<\/title>/si;
+            Ekg2::debug("BITLY TITLE->$1\n") if ($debug);
+            Ekg2::Window::print( $window, "Page title: $1" ) if defined($1);
         }
+        else { Ekg2::debug("BITLY GETTING TITLE FAILED\n") if ($debug) }
         Ekg2::Window::print( $window, "Shortened url: $url_bitly" );
     }
     else {
